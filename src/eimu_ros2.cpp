@@ -7,13 +7,10 @@
 #include "tf2/LinearMath/Quaternion.h"
 #include "eimu_ros2/eimu.hpp"
 
-
-
-void delay_ms(unsigned long milliseconds) {
-  usleep(milliseconds*1000);
+void delay_ms(unsigned long milliseconds)
+{
+  usleep(milliseconds * 1000);
 }
-
-
 
 class EIMURos2 : public rclcpp::Node
 {
@@ -24,6 +21,7 @@ public:
     this->declare_parameter<std::string>("frame_id", "imu");
     this->declare_parameter<std::string>("port", "/dev/ttyUSB0");
     this->declare_parameter<double>("publish_frequency", 10.0);
+    this->declare_parameter<int>("eimu_reference_frame_id", 1);
     this->declare_parameter<bool>("publish_tf_on_map_frame", false);
 
     frame_id = this->get_parameter("frame_id").as_string();
@@ -34,6 +32,9 @@ public:
 
     publish_frequency = this->get_parameter("publish_frequency").as_double();
     RCLCPP_INFO(this->get_logger(), "publish_frequency: %f", publish_frequency);
+
+    eimu_reference_frame_id = this->get_parameter("eimu_reference_frame_id").as_int();
+    RCLCPP_INFO(this->get_logger(), "eimu_reference_frame_id: %d", eimu_reference_frame_id);
 
     publish_tf_on_map_frame = this->get_parameter("publish_tf_on_map_frame").as_bool();
     RCLCPP_INFO(this->get_logger(), "publish_tf_on_map_frame: %d", publish_tf_on_map_frame);
@@ -49,7 +50,8 @@ public:
     }
 
     eimu.getGain(filterGain);
-    eimu.getRefFrame(imuRefFrame);
+    eimu.setRefFrame(eimu_reference_frame_id);
+    eimu.getRefFrame(ref_frame_id);
     /*---------------------------------------------------------------------*/
 
     /*----------initialize IMU message---------------*/
@@ -78,15 +80,16 @@ public:
     /*---------------------------------------------------------------------*/
 
     RCLCPP_INFO(this->get_logger(), "eimu_ros2 node has started with filterGain: %f", filterGain);
-    RCLCPP_INFO(this->get_logger(), "eimu_ros2 node has started with Reference Frame: %s", imuRefFrame.c_str());
+    RCLCPP_INFO(this->get_logger(), "eimu_ros2 node has started with Reference Frame: %s", ref_frame_list[ref_frame_id].c_str());
     if (publish_tf_on_map_frame)
     {
       RCLCPP_INFO(this->get_logger(), "imu transform is being published on map-frame for test rviz viewing");
     }
-    }
+  }
 
 private:
-  void publish_imu_callback(){  
+  void publish_imu_callback()
+  {
     messageImu.header.stamp = rclcpp::Clock().now();
 
     eimu.getQuat(data_w, data_x, data_y, data_z);
@@ -107,14 +110,15 @@ private:
 
     geometry_msgs::msg::Vector3Stamped rpy;
     tf2::Matrix3x3(tf2::Quaternion(
-      messageImu.orientation.x,
-      messageImu.orientation.y,
-      messageImu.orientation.z,
-      messageImu.orientation.w
-    )).getRPY(rpy.vector.x, rpy.vector.y, rpy.vector.z);
+                       messageImu.orientation.x,
+                       messageImu.orientation.y,
+                       messageImu.orientation.z,
+                       messageImu.orientation.w))
+        .getRPY(rpy.vector.x, rpy.vector.y, rpy.vector.z);
     rpy.header = messageImu.header;
 
-    if (publish_tf_on_map_frame) {
+    if (publish_tf_on_map_frame)
+    {
       publish_imu_tf(messageImu);
     }
 
@@ -122,7 +126,8 @@ private:
     imu_rpy_publisher_->publish(rpy);
   }
 
-  void publish_imu_tf(sensor_msgs::msg::Imu messageImu){  
+  void publish_imu_tf(sensor_msgs::msg::Imu messageImu)
+  {
     geometry_msgs::msg::TransformStamped t;
     t.header.stamp = messageImu.header.stamp;
 
@@ -151,19 +156,21 @@ private:
   std::string frame_id;
   std::string port;
   double publish_frequency;
+  int eimu_reference_frame_id;
+  std::vector<std::string> ref_frame_list = {"NWU", "ENU", "NED"}; // (0 - NWU,  1 - ENU,  2 - NED)
   bool publish_tf_on_map_frame;
 
   EIMU eimu;
   float data_w, data_x, data_y, data_z;
   float filterGain;
-  std::string imuRefFrame;
+  int ref_frame_id;
 };
 
 int main(int argc, char **argv)
 {
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<EIMURos2>(); // MODIFY NAME
-    rclcpp::spin(node);
-    rclcpp::shutdown();
-    return 0;
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<EIMURos2>(); // MODIFY NAME
+  rclcpp::spin(node);
+  rclcpp::shutdown();
+  return 0;
 }
